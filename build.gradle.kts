@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.JavaExec
+
 plugins {
     id("java")
 }
@@ -17,4 +19,25 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+        tasks.register<JavaExec>("runServer") {
+            group = ".run"
+            description = "Uruchamia server"
+
+            classpath = sourceSets["main"].runtimeClasspath
+
+            mainClass.set("pt.training.go.GoServer")
+        }
+
+tasks.register<JavaExec>("runClient") {
+    group = ".run"
+    description = "Uruchamia client-a"
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("pt.training.go.GoClient")
+
+    args("localhost")
+
+    standardInput = System.`in`
 }
