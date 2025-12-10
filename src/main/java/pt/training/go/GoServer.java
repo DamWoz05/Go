@@ -29,8 +29,8 @@ public class GoServer {
 
                 game.setCurrentPlayer(black); //Ustawienie czarnego jako pierwszego do ruszenia
 
-                black.start();
-                white.start();
+                new Thread(black).start();
+                new Thread(white).start();
 
                 System.out.println("Rozpoczeto gre.");
             }
@@ -63,7 +63,7 @@ public class GoServer {
             return board.toFlatString();
         }
 
-        class Player extends Thread {
+        class Player implements Runnable {
             private final Socket socket;
             private final StoneColor color;
             private Player opponent;
