@@ -19,7 +19,7 @@ public class GoClient {
     private StoneColor myColor;
 
     public void play(String serverAddress) throws IOException {
-        System.out.println("Laczenie z serwerem " + serverAddress + " na porcie 1988..");
+        System.out.println("Laczenie z serwerem " + serverAddress + " na porcie 1988...");
 
         try (Socket socket = new Socket(serverAddress, 1988)) {
 
