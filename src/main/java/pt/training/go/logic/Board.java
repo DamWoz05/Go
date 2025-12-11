@@ -1,7 +1,6 @@
 package pt.training.go.logic;
 
 //TODO naprawic strukture projektu (usunac folder z logika a klasy umiejscowic w folderach klient i server)
-//TODO odzyskac zagubiony jar w gradle/wrapper
 //TEST srawdzic czy removeGroup dziala poprawnie (brak rekurencji:
 // [z tego co rozumiem usuwa jedynie kamyki wokol siebie ale nie sprawdza czy sasiadujace kamyki lacza sie z jakimis kolejnymi]
 // np. w przypadku domkniecia linii 4 kamykow mogloby nie zadzialac)
