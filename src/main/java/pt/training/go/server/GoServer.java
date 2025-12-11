@@ -140,7 +140,7 @@ public class GoServer {
                 int col;
                 try {
 
-                    // Klient teraz wysyla 1..19 
+                    // Klient teraz wysyla 1..BOARD_SIZE
                     row = Integer.parseInt(parts[1]) - 1;
                     col = Integer.parseInt(parts[2]) - 1;
                 } catch (NumberFormatException e) {
@@ -163,12 +163,12 @@ public class GoServer {
                         if (opponent != null && opponent.out != null) {
                             opponent.out.println("OPPONENT_MOVED " + (row + 1) + " " + (col + 1));
                             opponent.out.println("BOARD " + boardFlat());
-                            //Kolej przciwnika
+                            //Kolej przeciwnika
                             opponent.out.println("YOUR_MOVE");
                         }
                     } catch (IllegalArgumentException ex) {
                         out.println("MESSAGE Niedozwolony ruch: " + ex.getMessage());
-                        // Gracz musi sprobowc ponownie
+                        // Gracz musi sprobowac ponownie
                         out.println("YOUR_MOVE");
                     }
                 }
