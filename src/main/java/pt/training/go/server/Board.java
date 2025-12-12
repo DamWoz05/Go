@@ -11,6 +11,8 @@ public class Board {
     private int whitePrisoners = 0;
     protected static final char EMPTY = '+'; // Puste pola
 
+    protected String koState = null;
+
     public Board(int size) {
         if (size < 5) {
             throw new IllegalArgumentException("Najmniejsza mozliwa plansza to 5x5");
@@ -48,6 +50,11 @@ public class Board {
         if (grid[row][col] != EMPTY) {
             throw new IllegalArgumentException("To pole jest zajete!");
         }
+        // Snapshots for KO
+
+        String snapshotGrid = toFlatString();
+        int SnapshotBlackPris = blackPrisoners;
+        int SnapshotWhitePris = whitePrisoners;
 
         char myStone = color.asChar();
         char oppStone = (color == StoneColor.CZARNY) ? StoneColor.BIALY.asChar() : StoneColor.CZARNY.asChar();
@@ -79,7 +86,7 @@ public class Board {
             throw new IllegalArgumentException("Ruch samobojczy jest zabroniony! (brak oddechów)");
         }
         // Doszlismy tutaj > ruch jest poprawny > kamien zostaje
-
+        // Aktualizacja
         if (capturedCount > 0) {
             if (color == StoneColor.CZARNY) {
                 blackPrisoners += capturedCount; //czarne kill biale
@@ -87,6 +94,21 @@ public class Board {
                 whitePrisoners += capturedCount; //biale kill czarne
             }
         }
+
+        // Implenetacja KO Rule
+        String currentGridState = toFlatString();
+
+        if (koState != null && currentGridState.equals(koState)) {
+            // Rollback
+            updateFromFlatString(snapshotGrid);
+            this.blackPrisoners = SnapshotBlackPris;
+            this.whitePrisoners = SnapshotWhitePris;
+
+            throw new IllegalArgumentException("Regula KO: nie mozna powtorzyc pozycji planszy z popszedniej tury.");
+        }
+
+        this.koState = snapshotGrid;
+
     }
 
     // ALGORYTMY POMOCNICZE 

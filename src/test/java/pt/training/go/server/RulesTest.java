@@ -73,4 +73,25 @@ public class RulesTest {
             assertEquals(Board.EMPTY, board.grid[1][1]);
         }
     }
+
+    // KO Rule
+    @Test
+    public void testKoRule() {
+        board.grid[1][2] = StoneColor.CZARNY.asChar();
+        board.grid[2][1] = StoneColor.CZARNY.asChar();
+        board.grid[2][3] = StoneColor.CZARNY.asChar();
+        board.grid[3][2] = StoneColor.CZARNY.asChar();
+
+        board.grid[1][3] = StoneColor.BIALY.asChar();
+        board.grid[2][4] = StoneColor.BIALY.asChar();
+        board.grid[3][3] = StoneColor.BIALY.asChar();
+
+        board.move(2, 2, StoneColor.BIALY);
+        try {
+            board.move(2, 3, StoneColor.CZARNY);
+            fail("Should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertEquals(Board.EMPTY, board.grid[2][3]);
+        }
+    }
 }
