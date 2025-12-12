@@ -7,9 +7,6 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-import pt.training.go.logic.Board;
-import pt.training.go.logic.StoneColor;
-
 public class GoServer {
 
     private static final int PORT = 1988;

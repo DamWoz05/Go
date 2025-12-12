@@ -6,8 +6,9 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 
-import pt.training.go.logic.Board;
-import pt.training.go.logic.StoneColor;
+import pt.training.go.server.Board;
+import pt.training.go.server.StoneColor;
+
 
 import java.util.Scanner;
 
@@ -20,13 +21,12 @@ public class GoClient {
 
     public void play(String serverAddress) throws IOException {
         System.out.println("Laczenie z serwerem " + serverAddress + " na porcie 1988...");
-
-        try (Socket socket = new Socket(serverAddress, 1988)) {
+        // Naprawiono scanner
+        try (Socket socket = new Socket(serverAddress, 1988);
+        Scanner console = new Scanner(System.in)) {
 
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
-            Scanner console = new Scanner(System.in);
-
             while (true) {
                 String line = in.readLine();
                 if (line == null) {
@@ -67,9 +67,15 @@ public class GoClient {
                         );
                         if (console.hasNextLine()) {
                             input = console.nextLine().trim();
-                            if (!input.isEmpty()) {
-                                break; 
-                            }
+                            if (input.isEmpty()) {
+                                continue; 
+                            } 
+
+                            break;
+                        } else {
+                            System.out.println("EOF: Koncze gre..");
+                            input = "quit";
+                            break;
                         }
                     }
 

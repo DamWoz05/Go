@@ -1,17 +1,15 @@
-package pt.training.go.logic;
+package pt.training.go.server;
 
-//TODO naprawic strukture projektu (usunac folder z logika a klasy umiejscowic w folderach klient i server)
-//TEST srawdzic czy removeGroup dziala poprawnie (brak rekurencji:
-// [z tego co rozumiem usuwa jedynie kamyki wokol siebie ale nie sprawdza czy sasiadujace kamyki lacza sie z jakimis kolejnymi]
-// np. w przypadku domkniecia linii 4 kamykow mogloby nie zadzialac)
+// TODO: Scoring
+// TODO (future Patterns): Command, State, Observer                            
 
 public class Board {
 
     private final int size;
-    private final char[][] grid;
+    protected final char[][] grid;
     private int blackPrisoners = 0;
     private int whitePrisoners = 0;
-    private static final char EMPTY = '+';     // Puste pola
+    protected static final char EMPTY = '+'; // Puste pola
 
     public Board(int size) {
         if (size < 5) {

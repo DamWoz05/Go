@@ -1,4 +1,4 @@
-package pt.training.go.logic;
+package pt.training.go.server;
 
 public enum StoneColor {
     CZARNY, BIALY;
