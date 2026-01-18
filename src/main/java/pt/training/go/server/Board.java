@@ -3,7 +3,6 @@ package pt.training.go.server;
 import java.util.LinkedList;
 import java.util.Queue;
 
-// TODO: GUI
 // TODO: Diagram UML
 // TODO: Dokumentacja Javadoc
 // TODO: Testy jednostkowe

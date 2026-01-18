@@ -20,7 +20,7 @@ public class GoServer {
     private static final int PORT = 1988;
 
     public static void main(String[] args) throws IOException {
-        int size = 8;
+        int size = 19;
 
         System.out.println("Go server starting on port " + PORT + ", board size = " + size);
 
