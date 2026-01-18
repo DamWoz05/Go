@@ -2,8 +2,21 @@ package pt.training.go.server.command.parser;
 
 import pt.training.go.server.command.*;
 
+/**
+ * CommandParser analizuje wejściowe polecenia tekstowe i konwertuje je
+ * na odpowiednie obiekty Command.
+ * Obsługuje różne typy poleceń gry w Go takie jak ruchy, przejścia i rezygnacje.
+ */
 public class CommandParser {
 
+    /**
+     * Analizuje linię tekstową i zwraca odpowiedni obiekt Command.
+     * Obsługuje polecenia: MOVE, PASS, REQUEST_RESUME, AGREE_END, TOGGLE_DEAD, RESIGN, QUIT.
+     *
+     * @param line wejściowe polecenie tekstowe do analizy
+     * @return obiekt Command odpowiadający analizowanemu poleceniu,
+     *         lub InvalidCommand/UnknownCommand jeśli analiza się nie powiedzie
+     */
     public Command parse(String line) {
         if (line == null) {
             return new InvalidCommand("null");
@@ -36,9 +49,16 @@ public class CommandParser {
         }
     }
 
+    /**
+     * Analizuje polecenie ruchu na planszy.
+     * Oczekuje formatu: MOVE wiersz kolumna
+     *
+     * @param parts tablica słów polecenia podzielona wg białych znaków
+     * @return MoveCommand z parsowanymi współrzędnymi lub InvalidCommand w przypadku błędu
+     */
     private Command parseMove(String[] parts) {
         if (parts.length < 3) {
-            return new InvalidCommand("Nieprawidlowy format komendy MOVE. Uzycie: 3 4 (wiersz kolumna)");
+            return new InvalidCommand("Nieprawidlowy format komendy. Uzycie: 3 4 (wiersz kolumna)");
         }
         try {
             int row = Integer.parseInt(parts[1]) - 1;
@@ -49,9 +69,16 @@ public class CommandParser {
         }
     }
 
+    /**
+     * Analizuje polecenie oznaczenia kamienia jako martwego.
+     * Oczekuje formatu: TOGGLE_DEAD wiersz kolumna
+     *
+     * @param parts tablica słów polecenia podzielona wg białych znaków
+     * @return ToggleDeadCommand z parsowanymi współrzędnymi lub InvalidCommand w przypadku błędu
+     */
     private Command parseToggleDead(String[] parts) {
         if (parts.length < 3) {
-            return new InvalidCommand("Nieprawidlowy format komendy TOGGLE_DEAD. Uzycie: TOGGLE_DEAD 3 4");
+            return new InvalidCommand("Nieprawidlowy format komendy dead. Uzycie: dead 3 4");
         }
         try {
             int row = Integer.parseInt(parts[1]) - 1;

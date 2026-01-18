@@ -4,21 +4,47 @@ import pt.training.go.server.Board;
 import pt.training.go.server.command.GameContext;
 import pt.training.go.server.command.PlayerContext;
 
+/**
+ * ScoringState reprezentuje stan gry podczas liczenia wyniku.
+ * W tym stanie gracze mogą oznaczać martwe kamienie i wyrażać zgodę na wynik,
+ * lub wznowić grę jeśli się nie zgadzają.
+ */
 public class ScoringState implements GameState {
 
     private boolean blackAgreed = false;
     private boolean whiteAgreed = false;
 
+    /**
+     * Uniemożliwia wykonanie ruchu w stanie liczenia wyniku.
+     *
+     * @param game kontekst gry
+     * @param player gracz próbujący wykonać ruch
+     * @param row wiersz ruchu
+     * @param col kolumna ruchu
+     */
     @Override
     public void move(GameContext game, PlayerContext player, int row, int col) {
-        player.send("MESSAGE [SCORING] Gra jest zatrzymana. Uzyj: TOGGLE_DEAD, AGREE_END albo REQUEST_RESUME.");
+        player.send("MESSAGE [SCORING] Gra jest zatrzymana. Uzyj: dead, agree albo resume.");
     }
 
+    /**
+     * Uniemożliwia przejście w stanie liczenia wyniku.
+     *
+     * @param game kontekst gry
+     * @param player gracz próbujący przejść
+     */
     @Override
     public void pass(GameContext game, PlayerContext player) {
-        player.send("MESSAGE [SCORING] Gra jest zatrzymana. Uzyj: TOGGLE_DEAD, AGREE_END albo REQUEST_RESUME.");
+        player.send("MESSAGE [SCORING] Gra jest zatrzymana. Uzyj: dead, agree albo resume.");
     }
 
+    /**
+     * Obsługuje żądanie wznowienia gry w stanie liczenia wyniku.
+     * Wyczyść oznaczenia martwych kamieni i powraca do stanu PlayingState.
+     *
+     * @param game kontekst gry
+     * @param player gracz żądający wznowienia
+     */
     @Override
     public void requestResume(GameContext game, PlayerContext player) {
         game.broadcast("MESSAGE [INFO] Brak zgody co do wynikow. Gracz " + player.getColor() + " zazadal wznowienia gry.");
@@ -36,6 +62,13 @@ public class ScoringState implements GameState {
         }
     }
 
+    /**
+     * Obsługuje wyrażenie zgody na wynik.
+     * Gdy obaj gracze się zgodzą, oblicza wynik i kończy grę.
+     *
+     * @param game kontekst gry
+     * @param player gracz wyrażający zgodę
+     */
     @Override
     public void agreeEnd(GameContext game, PlayerContext player) {
         if (player.getColor().toString().equals("CZARNY")) {
@@ -78,11 +111,27 @@ public class ScoringState implements GameState {
         }
     }
 
+    /**
+     * Obsługuje przełączenie martwości kamienia.
+     * Umożliwia graczom oznaczanie kamieni jako martwych.
+     *
+     * @param game kontekst gry
+     * @param player gracz przełączający martwość
+     * @param row wiersz kamienia
+     * @param col kolumna kamienia
+     */
     @Override
     public void toggleDead(GameContext game, PlayerContext player, int row, int col) {
         game.toggleDead(row, col, player);
     }
 
+    /**
+     * Obsługuje rezygnację gracza podczas liczenia wyniku.
+     * Kończy grę i przechodzi do stanu FinishedState.
+     *
+     * @param game kontekst gry
+     * @param player gracz rezygnujący
+     */
     @Override
     public void resign(GameContext game, PlayerContext player) {
         if (player.getOpponent() != null) {
@@ -92,12 +141,24 @@ public class ScoringState implements GameState {
         game.setState(new FinishedState());
     }
 
+    /**
+     * Obsługuje opuszczenie gry przez gracza podczas liczenia wyniku.
+     * Kończy grę i przechodzi do stanu FinishedState.
+     *
+     * @param game kontekst gry
+     * @param player gracz opuszczający grę
+     */
     @Override
     public void quit(GameContext game, PlayerContext player) {
         game.broadcast("MESSAGE Gracz " + player.getColor() + " opuscil gre podczas liczenia.");
         game.setState(new FinishedState());
     }
 
+    /**
+     * Zwraca nazwę tego stanu gry.
+     *
+     * @return nazwa stanu "SCORING"
+     */
     @Override
     public String getName() {
         return "SCORING";

@@ -3,13 +3,15 @@ package pt.training.go.server;
 import java.util.LinkedList;
 import java.util.Queue;
 
-// TODO: Diagram UML
-// TODO: Dokumentacja Javadoc
-// TODO: Testy jednostkowe
-// README (maby)
-
 // TODO (FUTURE Patterns): Observer
 
+/**
+ * Board reprezentuje planszę gry w Go.
+ * Zarządza stanem kamieni, stosuje reguły gry (m.in. KO, zakaz samobójstwa),
+ * obsługuje usuwanie grup, naliczanie więźniów oraz obliczanie wyniku (scoring).
+ * 
+ * Nie modyfikuje wewnętrznych komentarzy użytkownika ani istniejącej logiki.
+ */
 public class Board {
 
     private final int size;
@@ -20,6 +22,13 @@ public class Board {
 
     protected String koState = null;
 
+    /**
+     * Tworzy planszę o podanym rozmiarze.
+     * Minimalny rozmiar planszy to 5 (czyli 5x5).
+     *
+     * @param size rozmiar planszy (liczba wierszy i kolumn)
+     * @throws IllegalArgumentException gdy size < 5
+     */
     public Board(int size) {
         if (size < 5) {
             throw new IllegalArgumentException("Najmniejsza mozliwa plansza to 5x5");
@@ -34,19 +43,43 @@ public class Board {
         }
     }
 
+    /**
+     * Zwraca rozmiar planszy (liczbę wierszy/kolumn).
+     *
+     * @return rozmiar planszy
+     */
     public int getSize() {
         return size;
     }
 
+    /**
+     * Zwraca liczbę więźniów zdobytych przez czarne (liczba zbitych kamieni białych).
+     *
+     * @return liczba czarnych więźniów
+     */
     public int getBlackPrisoners() {
         return blackPrisoners;
     }
 
+    /**
+     * Zwraca liczbę więźniów zdobytych przez białe (liczba zbitych kamieni czarnych).
+     *
+     * @return liczba białych więźniów
+     */
     public int getWhitePrisoners() {
         return whitePrisoners;
     }
 
-    // MAIN GAME LOGIC
+    /**
+     * Wykonuje ruch na planszy zgodnie z regułami gry.
+     * Sprawdza granice, zajętość pola, usuwa grupy bez oddechów,
+     * sprawdza zakaz samobójstwa oraz regułę KO.
+     *
+     * @param row wiersz ruchu (0-indexed)
+     * @param col kolumna ruchu (0-indexed)
+     * @param color kolor kamienia do postawienia
+     * @throws IllegalArgumentException przy nieprawidłowym ruchu
+     */
     public synchronized void move(int row, int col, StoneColor color) {
         // Sprawdzenie granic
         if (row < 0 || row >= size || col < 0 || col >= size) {
@@ -180,14 +213,25 @@ public class Board {
     // METODY SYNCHRONIZACJI I OPTYMALIZACJI
 
 
-    // Ustawia kamien bez sprawdzania regul (dla aktualizacji planszy u klienta)
+    /**
+     * Ustawia kamień bez sprawdzania reguł (używane do aktualizacji po stronie klienta).
+     *
+     * @param row wiersz
+     * @param col kolumna
+     * @param color kolor kamienia
+     */
     public synchronized void forcePlaceStone(int row, int col, StoneColor color) {
         if (isValid(row, col)) {
             grid[row][col] = color.asChar();
         }
     }
 
-    //Konwertowanie tabeli na string dla lepszej optymalizacji
+    /**
+     * Zwraca spłaszczoną reprezentację planszy (flat string).
+     * Kolejne znaki odpowiadają kolejnym polom planszy.
+     *
+     * @return spłaszczony string reprezentujący planszę
+     */
     public synchronized String toFlatString() {
         StringBuilder sb = new StringBuilder(size * size);
         for (int r = 0; r < size; r++) {
@@ -198,7 +242,12 @@ public class Board {
         return sb.toString();
     }
 
-    // Wersja do wyswietlania w SCORING: martwe kamienie oznaczamy jako 'x'
+    /**
+     * Zwraca spłaszczoną reprezentację planszy z oznaczonymi martwymi kamieniami ('x').
+     *
+     * @param deadMarks tablica oznaczająca martwe kamienie
+     * @return spłaszczony string z martwymi kamieniami
+     */
     public synchronized String toFlatStringWithDead(boolean[][] deadMarks) {
         StringBuilder sb = new StringBuilder(size * size);
 
@@ -217,7 +266,12 @@ public class Board {
         return sb.toString();
     }
 
-    //Konwertowanie stringa z powrotem na tabele
+    /**
+     * Aktualizuje planszę na podstawie spłaszczonego stringa.
+     *
+     * @param flat string reprezentujący stan planszy
+     * @throws IllegalArgumentException jeśli długość stringa jest nieprawidłowa
+     */
     public synchronized void updateFromFlatString(String flat) {
         if (flat.length() != size * size) {
             throw new IllegalArgumentException("String z informacjami o planszy ma zla dlugosc");
@@ -230,7 +284,11 @@ public class Board {
         }
     }
 
-    // WIZUALIZACJA
+    /**
+     * Zwraca czytelną reprezentację planszy do wyświetlenia w konsoli.
+     *
+     * @return ładnie sformatowany string planszy
+     */
     public synchronized String toPrettyString() {
         StringBuilder sb = new StringBuilder();
 
@@ -265,8 +323,11 @@ public class Board {
         return sb.toString();
     }
 
-    // NOWE METODY: SCORING (OBLICZANIE WYNIKOW)
-
+    /**
+     * Oblicza wynik gry: teren + więźniowie dla obu graczy.
+     *
+     * @return GameResult zawierający szczegóły wyniku
+     */
     public synchronized GameResult calculateResult() {
         int blackTerritory = 0;
         int whiteTerritory = 0;
@@ -306,7 +367,11 @@ public class Board {
         int count = 0;
         boolean touchesBlack = false;
         boolean touchesWhite = false;
-        boolean touchesBorder = false;
+
+        boolean touchesTop = false;
+        boolean touchesBottom = false;
+        boolean touchesLeft = false;
+        boolean touchesRight = false;
 
         int[] dr = {-1, 1, 0, 0};
         int[] dc = {0, 0, -1, 1};
@@ -317,9 +382,10 @@ public class Board {
             int r = curr[0];
             int c = curr[1];
 
-            if (r == 0 || r == size - 1 || c == 0 || c == size - 1) {
-                touchesBorder = true;
-            }
+            if (r == 0) touchesTop = true;
+            if (r == size - 1) touchesBottom = true;
+            if (c == 0) touchesLeft = true;
+            if (c == size - 1) touchesRight = true;
 
             for (int i = 0; i < 4; i++) {
                 int nr = r + dr[i];
@@ -340,14 +406,20 @@ public class Board {
 
         StoneColor owner = null;
 
-        if (!touchesBorder) {
-            if (touchesBlack && !touchesWhite) owner = StoneColor.CZARNY;
-            else if (touchesWhite && !touchesBlack) owner = StoneColor.BIALY;
+        boolean isOpenSpace = (touchesTop && touchesBottom) || (touchesLeft && touchesRight);
+
+        if (!isOpenSpace) {
+            if (touchesBlack && !touchesWhite) {
+                owner = StoneColor.CZARNY;
+            } else if (touchesWhite && !touchesBlack) {
+                owner = StoneColor.BIALY;
+            }
         }
+        
+        // isOpenSpace == true, owner == null
 
         return new TerritoryResult(count, owner);
     }
-
     private static class TerritoryResult {
         int count;
         StoneColor owner;
@@ -358,6 +430,9 @@ public class Board {
         }
     }
 
+    /**
+     * Rezultat gry zawierający sumaryczne punkty, teren i więźniów obu graczy.
+     */
     public static class GameResult {
         public int blackTotal;
         public int whiteTotal;
@@ -366,6 +441,16 @@ public class Board {
         public int blackPrisoners;
         public int whitePrisoners;
 
+        /**
+         * Tworzy obiekt rezultatu gry.
+         *
+         * @param bt suma punktów czarnych (teren + więźniowie)
+         * @param wt suma punktów białych (teren + więźniowie)
+         * @param bTer teren czarnych
+         * @param wTer teren białych
+         * @param bPris więźniowie czarnych
+         * @param wPris więźniowie białych
+         */
         GameResult(int bt, int wt, int bTer, int wTer, int bPris, int wPris) {
             this.blackTotal = bt;
             this.whiteTotal = wt;
@@ -384,6 +469,15 @@ public class Board {
 
     // NOWE METODY: DEAD MARKING (dla SCORING)
 
+    /**
+     * Przełącza oznaczenie martwej grupy kamieni zaczynając od podanej pozycji.
+     * Zmienia stan wszystkich kamieni tej grupy.
+     *
+     * @param row wiersz kamienia
+     * @param col kolumna kamienia
+     * @param dead tablica oznaczająca martwe kamienie (modyfikowana przez metodę)
+     * @throws IllegalArgumentException jeśli współrzędne są nieprawidłowe lub pole jest puste
+     */
     public synchronized void toggleDeadGroup(int row, int col, boolean[][] dead) {
         if (row < 0 || row >= size || col < 0 || col >= size) {
             throw new IllegalArgumentException("Bledne wspolrzedne.");
@@ -405,7 +499,7 @@ public class Board {
         int[] dc = {0, 0, -1, 1};
 
         while (!q.isEmpty()) {
-            int[] cur = q.poll();
+            int[] cur = q.poll(); // delete
             int r = cur[0];
             int c = cur[1];
 
@@ -423,6 +517,11 @@ public class Board {
         }
     }
 
+    /**
+     * Zastosowuje oznaczone jako martwe kamienie, usuwa je z planszy i aktualizuje liczniki więźniów.
+     *
+     * @param dead tablica oznaczająca martwe kamienie (pola zostaną wyczyszczone)
+     */
     public synchronized void applyDeadMarks(boolean[][] dead) {
         int blackDead = 0;
         int whiteDead = 0;

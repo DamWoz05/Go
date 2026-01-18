@@ -11,6 +11,11 @@ import pt.training.go.server.StoneColor;
 
 import java.util.Scanner;
 
+/**
+ * GoClient jest aplikacją kliencką do gry w Go.
+ * Łączy się z serwerem GoServer przez gniazdo TCP i obsługuje komunikację
+ * dotyczącą ruchów, aktualizacji planszy i zarządzania stanem gry.
+ */
 public class GoClient {
 
     private BufferedReader in;
@@ -19,6 +24,14 @@ public class GoClient {
     private StoneColor myColor;
     private volatile boolean playing = true;
 
+    /**
+     * Łączy się z serwerem Go i rozpoczyna grę.
+     * Nawiązuje połączenie gniazda, zarządza strumieniami wejścia/wyjścia
+     * i obsługuje zarówno wiadomości serwera jak i wejście użytkownika równocześnie.
+     *
+     * @param serverAddress adres serwera Go, z którym się łączyć
+     * @throws IOException jeśli wystąpi błąd I/O podczas połączenia lub komunikacji
+     */
     public void play(String serverAddress) throws IOException {
         System.out.println("Laczenie z serwerem " + serverAddress + " na porcie 1988...");
         
@@ -112,7 +125,18 @@ public class GoClient {
                     } else if (input.toLowerCase().startsWith("dead ")) {
                         out.println("TOGGLE_DEAD " + input.substring(5).trim());
                     } else {
-                        out.println("MOVE " + input);
+                        String[] parts = input.split("\\s+");
+                        if (parts.length == 2) {
+                            try {
+                                Integer.parseInt(parts[0]);
+                                Integer.parseInt(parts[1]);
+                                out.println("MOVE " + input);
+                            } catch (NumberFormatException e) {
+                                System.out.println("Nieprawidlowy ruch. Uzyj formatu: wiersz kolumna (np. 3 4)");
+                            }
+                        } else {
+                            System.out.println("Nieprawidlowy ruch. Uzyj formatu: wiersz kolumna (np. 3 4)");
+                        }
                     }
                 }
             }
@@ -121,6 +145,14 @@ public class GoClient {
         }
     }
 
+    /**
+     * Główny punkt wejścia aplikacji klienta Go.
+     * Akceptuje opcjonalny adres serwera jako argument wiersza poleceń.
+     *
+     * @param args argumenty wiersza poleceń, gdzie args[0] to adres serwera
+     *             (domyślnie "localhost" jeśli nie jest podany)
+     * @throws IOException jeśli wystąpi błąd I/O
+     */
     public static void main(String[] args) throws IOException {
         String serverAddress = args.length > 0 ? args[0] : "localhost";
         GoClient client = new GoClient();
