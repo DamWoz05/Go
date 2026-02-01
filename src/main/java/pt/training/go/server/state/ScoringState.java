@@ -1,6 +1,7 @@
 package pt.training.go.server.state;
 
 import pt.training.go.server.Board;
+import pt.training.go.server.GoServer;
 import pt.training.go.server.command.GameContext;
 import pt.training.go.server.command.PlayerContext;
 
@@ -65,6 +66,7 @@ public class ScoringState implements GameState {
     /**
      * Obsługuje wyrażenie zgody na wynik.
      * Gdy obaj gracze się zgodzą, oblicza wynik i kończy grę.
+     * ZAPISUJE ZWYCIĘZCĘ DO BAZY DANYCH.
      *
      * @param game kontekst gry
      * @param player gracz wyrażający zgodę
@@ -99,14 +101,25 @@ public class ScoringState implements GameState {
            
             String winner;
             if (result.blackTotal > result.whiteTotal) {
-                winner = "WYGRAL CZARNY (roznica: " + (result.blackTotal - result.whiteTotal) + ")";
+                winner = "CZARNY";
             } else if (result.whiteTotal > result.blackTotal) {
-                winner = "WYGRAL BIALY (roznica: " + (result.whiteTotal - result.blackTotal) + ")";
+                winner = "BIALY";
             } else {
-                winner = "REMIS!";
+                winner = "REMIS";
             }
            
-            game.broadcast("MESSAGE [GAME OVER] " + winner);
+            game.broadcast("MESSAGE [GAME OVER] " + winner + " WYGRAL!");
+            
+            // NOWE: Zapisz zwycięzcę do bazy danych
+            // Używamy refleksji, aby wywołać metodę saveWinner (dostępną tylko w GoServer.Game)
+            try {
+                java.lang.reflect.Method method = game.getClass().getDeclaredMethod("saveWinner", String.class);
+                method.setAccessible(true);
+                method.invoke(game, winner);
+            } catch (Exception e) {
+                System.err.println("Nie udało się zapisać zwycięzcy: " + e.getMessage());
+            }
+            
             game.setState(new FinishedState());
         }
     }
@@ -138,6 +151,17 @@ public class ScoringState implements GameState {
             player.getOpponent().send("MESSAGE [GAME OVER] Przeciwnik poddal gre. Wygrales!");
         }
         player.send("MESSAGE [GAME OVER] Poddales gre. Przegrales.");
+        
+        // Zapisz zwycięzcę
+        String winner = player.getColor().toString().equals("CZARNY") ? "BIALY" : "CZARNY";
+        try {
+            java.lang.reflect.Method method = game.getClass().getDeclaredMethod("saveWinner", String.class);
+            method.setAccessible(true);
+            method.invoke(game, winner);
+        } catch (Exception e) {
+            System.err.println("Nie udało się zapisać zwycięzcy: " + e.getMessage());
+        }
+        
         game.setState(new FinishedState());
     }
 

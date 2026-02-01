@@ -3,6 +3,8 @@ import org.gradle.api.tasks.JavaExec
 plugins {
     id("java")
     id("org.openjfx.javafxplugin") version "0.1.0"
+    id("org.springframework.boot") version "3.2.2"
+    id("io.spring.dependency-management") version "1.1.4"
 }
 
 group = "pt.training.maven.jee"
@@ -19,6 +21,11 @@ javafx {
 }
 
 dependencies {
+    
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    runtimeOnly("com.h2database:h2")
+
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -35,6 +42,8 @@ tasks.register<JavaExec>("runServer") {
     classpath = sourceSets["main"].runtimeClasspath
 
     mainClass.set("pt.training.go.server.GoServer")
+    
+    standardInput = System.`in`
 }
 
 tasks.register<JavaExec>("runClient") {
@@ -46,6 +55,14 @@ tasks.register<JavaExec>("runClient") {
 
     args("localhost")
 
+    standardInput = System.`in`
+}
+
+tasks.register<JavaExec>("runSmartBot") {
+    group = ".run"
+    description = "Uruchamia inteligentnego bota"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("pt.training.go.client.SmartBot")
     standardInput = System.`in`
 }
 

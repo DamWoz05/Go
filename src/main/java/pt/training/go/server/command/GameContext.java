@@ -166,4 +166,11 @@ public interface GameContext {
      * @return rozmiar planszy (liczba wierszy/kolumn)
      */
     int getBoardSize();
+
+    /**
+     * Zapisuje zwycięzcę gry do bazy danych.
+     *
+     * @param winner zwycięzca (CZARNY/BIALY/REMIS)
+     */
+    void saveWinner(String winner);
 }

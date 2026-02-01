@@ -202,6 +202,10 @@ public class QuickFlowTest {
         public int getBoardSize() {
             return board.getSize();
         }
+        @Override
+        public void saveWinner(String winner) {
+            // Metoda pusta na potrzeby testów
+        }
     }
 
     private FakeGame newGame5x5() {

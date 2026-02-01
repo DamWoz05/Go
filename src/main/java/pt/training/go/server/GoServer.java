@@ -1,9 +1,16 @@
 package pt.training.go.server;
 
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 import pt.training.go.server.command.Command;
 import pt.training.go.server.command.GameContext;
 import pt.training.go.server.command.PlayerContext;
 import pt.training.go.server.command.parser.CommandParser;
+import pt.training.go.server.db.GameEntity;
+import pt.training.go.server.db.GameRepository;
+import pt.training.go.server.db.MoveEntity;
+import pt.training.go.server.db.MoveRepository;
 import pt.training.go.server.state.FinishedState;
 import pt.training.go.server.state.GameState;
 import pt.training.go.server.state.PlayingState;
@@ -14,14 +21,18 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
 
 /**
  * GoServer uruchamia serwer gry Go nasłuchujący na porcie 1988.
  * Tworzy nowe instancje gry dla par graczy i zarządza połączeniami.
+ * Automatycznie zapisuje gry do bazy danych.
  */
+@SpringBootApplication
 public class GoServer {
 
     private static final int PORT = 1988;
+    private static final int REPLAY_PORT = 1989;
 
     /**
      * Główny punkt wejścia serwera. Tworzy gniazdo nasłuchujące i
@@ -31,17 +42,41 @@ public class GoServer {
      * @throws IOException w przypadku błędów IO związanych z gniazdem
      */
     public static void main(String[] args) throws IOException {
+        // Uruchomienie Spring Boot - potrzebne dla JPA
+        ConfigurableApplicationContext context = SpringApplication.run(GoServer.class, args);
+        
+        // Pobieramy beany z Spring context
+        GameRepository gameRepo = context.getBean(GameRepository.class);
+        MoveRepository moveRepo = context.getBean(MoveRepository.class);
+
         int size = 19;
 
+        // Wątek serwera REPLAY (port 1989)
+        new Thread(() -> {
+            try (ServerSocket replayListener = new ServerSocket(REPLAY_PORT)) {
+                System.out.println("Replay server listening on port " + REPLAY_PORT);
+                while (true) {
+                    Socket socket = replayListener.accept();
+                    new Thread(new ReplaySession(socket, moveRepo, size)).start();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
+
         System.out.println("Go server starting on port " + PORT + ", board size = " + size);
+        System.out.println("Database enabled - games will be saved automatically");
 
         try (ServerSocket listener = new ServerSocket(PORT)) {
             while (true) {
-                Game game = new Game(size);
+                Game game = new Game(size, gameRepo, moveRepo);
                 System.out.println("Oczekiwanie na graczy..");
 
                 Game.Player black = game.new Player(listener.accept(), StoneColor.CZARNY);
+                System.out.println("Gracz Czarny dolaczyl.");
+
                 Game.Player white = game.new Player(listener.accept(), StoneColor.BIALY);
+                System.out.println("Gracz Bialy dolaczyl.");
 
                 black.setOpponent(white);
                 white.setOpponent(black);
@@ -52,7 +87,113 @@ public class GoServer {
                 new Thread(black).start();
                 new Thread(white).start();
 
-                System.out.println("Rozpoczeto gre.");
+                System.out.println("Rozpoczeto gre. ID w bazie: " + game.getDbGameId());
+            }
+        }
+    }
+
+    /**
+     * Klasa obsługująca sesję odtwarzania gry (Replay).
+     */
+    private static class ReplaySession implements Runnable {
+        private final Socket socket;
+        private final MoveRepository moveRepo;
+        private final int size;
+
+        ReplaySession(Socket socket, MoveRepository moveRepo, int size) {
+            this.socket = socket;
+            this.moveRepo = moveRepo;
+            this.size = size;
+        }
+
+        @Override
+        public void run() {
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+
+                // Oczekujemy komendy LOAD <id>
+                String loadLine = in.readLine();
+                if (loadLine == null || !loadLine.startsWith("LOAD")) {
+                    return;
+                }
+                
+                Long gameId = Long.parseLong(loadLine.split(" ")[1]);
+                List<MoveEntity> moves = moveRepo.findByGameIdOrderByMoveNumberAsc(gameId);
+                
+                // DEBUG
+                System.out.println("[REPLAY] Klient zazadal gry ID: " + gameId + ". Znaleziono ruchow: " + moves.size());
+
+                Board replayBoard = new Board(size);
+                int currentMoveIndex = -1;
+
+                out.println("WELCOME REPLAY");
+                out.println("BOARD_SIZE " + size);
+                out.println("BOARD " + replayBoard.toFlatString());
+                out.println("MESSAGE Tryb Replay. Gra ID: " + gameId + ". Ruchow: " + moves.size());
+
+                while (true) {
+                    String line = in.readLine();
+                    if (line == null || line.equalsIgnoreCase("QUIT")) break;
+
+                    boolean changed = false;
+
+                    if (line.equalsIgnoreCase("NEXT")) {
+                        if (currentMoveIndex + 1 < moves.size()) {
+                            currentMoveIndex++;
+                            changed = true;
+                        } else {
+                            out.println("MESSAGE Koniec gry. Nie ma nowszych ruchow.");
+                        }
+                    } else if (line.equalsIgnoreCase("PREV")) {
+                        if (currentMoveIndex >= 0) {
+                            currentMoveIndex--;
+                            changed = true;
+                        } else {
+                            out.println("MESSAGE Poczatek gry. Nie mozna cofnac.");
+                        }
+                    }
+
+                    if (changed) {
+                        // Reset planszy
+                        for(int r=0; r<size; r++) 
+                            for(int c=0; c<size; c++) 
+                                replayBoard.grid[r][c] = Board.EMPTY;
+                        
+                        // Odtwarzanie ruchów
+                        for (int i = 0; i <= currentMoveIndex; i++) {
+                            MoveEntity m = moves.get(i);
+                            if ("MOVE".equals(m.getType())) {
+                                StoneColor c = m.getColor().equals("CZARNY") ? StoneColor.CZARNY : StoneColor.BIALY;
+                                replayBoard.forcePlaceStone(m.getRowCoord(), m.getColCoord(), c);
+                            }
+                        }
+                        
+                        out.println("BOARD " + replayBoard.toFlatString());
+                        
+                        // Generowanie szczegółowej wiadomości
+                        if (currentMoveIndex >= 0) {
+                            MoveEntity m = moves.get(currentMoveIndex);
+                            String info = "";
+                            if ("MOVE".equals(m.getType())) {
+                                info = "Ruch " + m.getColor() + " (" + (m.getRowCoord()+1) + ", " + (m.getColCoord()+1) + ")";
+                            } else if ("PASS".equals(m.getType())) {
+                                info = m.getColor() + " SPASOWAL";
+                            } else if ("RESIGN".equals(m.getType())) {
+                                info = m.getColor() + " PODDAL GRE";
+                            } else {
+                                info = m.getType();
+                            }
+                            
+                            out.println("MESSAGE " + info + " [" + (currentMoveIndex + 1) + "/" + moves.size() + "]");
+                        } else {
+                            out.println("MESSAGE Poczatek gry (pusta plansza).");
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Replay error: " + e.getMessage());
+            } finally {
+                try { socket.close(); } catch (IOException ignored) {}
             }
         }
     }
@@ -61,6 +202,7 @@ public class GoServer {
      * Game reprezentuje kontekst pojedynczej rozgrywki.
      * Implementuje interfejs GameContext i zarządza stanem gry, planszą,
      * kolejką graczy oraz komunikacją pomiędzy nimi.
+     * Automatycznie zapisuje wszystkie ruchy do bazy danych.
      */
     private static class Game implements GameContext {
 
@@ -76,11 +218,42 @@ public class GoServer {
         private boolean gameEnded = false;
 
         private boolean[][] deadMarks;
+        
+        // Baza danych
+        private final GameRepository gameRepo;
+        private final MoveRepository moveRepo;
+        private Long dbGameId;
+        private int moveCounter = 0;
 
-        Game(int size) {
+        /**
+         * Tworzy nową grę i automatycznie zapisuje ją do bazy danych.
+         *
+         * @param size rozmiar planszy
+         * @param gameRepo repozytorium gier
+         * @param moveRepo repozytorium ruchów
+         */
+        Game(int size, GameRepository gameRepo, MoveRepository moveRepo) {
             this.board = new Board(size);
             this.state = new PlayingState();
             this.deadMarks = new boolean[size][size];
+            this.gameRepo = gameRepo;
+            this.moveRepo = moveRepo;
+            
+            // Tworzymy grę w bazie danych
+            GameEntity entity = new GameEntity(size);
+            this.gameRepo.save(entity);
+            this.dbGameId = entity.getId();
+            
+            System.out.println("Utworzono grę w bazie danych. ID: " + dbGameId);
+        }
+
+        /**
+         * Zwraca ID gry w bazie danych.
+         *
+         * @return ID gry
+         */
+        public Long getDbGameId() {
+            return dbGameId;
         }
 
         synchronized void setPlayers(Player black, Player white) {
@@ -264,7 +437,7 @@ public class GoServer {
         }
 
         /**
-         * Wykonuje ruch w kontekście stanu gry.
+         * Wykonuje ruch w kontekście stanu gry i zapisuje go do bazy.
          *
          * @param row wiersz
          * @param col kolumna
@@ -273,16 +446,25 @@ public class GoServer {
         @Override
         public synchronized void makeMove(int row, int col, PlayerContext playerCtx) {
             state.move(this, playerCtx, row, col);
+            
+            // Zapisujemy tylko udane ruchy (gdy kamień został postawiony)
+            if (state instanceof PlayingState) {
+                char fieldValue = board.toFlatString().charAt(row * board.getSize() + col);
+                if (fieldValue != Board.EMPTY) {
+                    saveMoveToDb(row, col, playerCtx.getColor().toString(), "MOVE");
+                }
+            }
         }
 
         /**
-         * Obsługuje pass wysłany przez gracza.
+         * Obsługuje pass wysłany przez gracza i zapisuje go do bazy.
          *
          * @param playerCtx gracz wykonujący pass
          */
         @Override
         public synchronized void pass(PlayerContext playerCtx) {
             state.pass(this, playerCtx);
+            saveMoveToDb(-1, -1, playerCtx.getColor().toString(), "PASS");
         }
 
         /**
@@ -306,13 +488,18 @@ public class GoServer {
         }
 
         /**
-         * Obsługuje rezygnację gracza.
+         * Obsługuje rezygnację gracza i zapisuje ją do bazy.
          *
          * @param playerCtx gracz rezygnujący
          */
         @Override
         public synchronized void resign(PlayerContext playerCtx) {
             state.resign(this, playerCtx);
+            saveMoveToDb(-1, -1, playerCtx.getColor().toString(), "RESIGN");
+            
+            // Określamy zwycięzcę
+            String winner = playerCtx.getColor().toString().equals("CZARNY") ? "BIALY" : "CZARNY";
+            saveWinner(winner);
         }
 
         /**
@@ -374,6 +561,44 @@ public class GoServer {
         @Override
         public int getBoardSize() {
             return board.getSize();
+        }
+        
+        /**
+         * Zapisuje ruch do bazy danych.
+         *
+         * @param r wiersz (-1 dla PASS/RESIGN)
+         * @param c kolumna (-1 dla PASS/RESIGN)
+         * @param color kolor gracza
+         * @param type typ ruchu (MOVE/PASS/RESIGN)
+         */
+        private void saveMoveToDb(int r, int c, String color, String type) {
+            try {
+                moveCounter++;
+                MoveEntity m = new MoveEntity(dbGameId, moveCounter, r, c, color, type);
+                moveRepo.save(m);
+                System.out.println("Zapisano ruch #" + moveCounter + " do bazy: " + type + " " + color);
+            } catch (Exception e) {
+                System.err.println("Błąd zapisu ruchu do bazy: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Zapisuje zwycięzcę gry do bazy danych.
+         *
+         * @param winner zwycięzca (CZARNY/BIALY/REMIS)
+         */
+        @Override
+        public void saveWinner(String winner) {
+            try {
+                GameEntity entity = gameRepo.findById(dbGameId).orElse(null);
+                if (entity != null) {
+                    entity.setWinner(winner);
+                    gameRepo.save(entity);
+                    System.out.println("Zapisano zwycięzcę do bazy: " + winner);
+                }
+            } catch (Exception e) {
+                System.err.println("Błąd zapisu zwycięzcy: " + e.getMessage());
+            }
         }
 
         /**
