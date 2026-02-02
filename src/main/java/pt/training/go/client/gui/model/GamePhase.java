@@ -13,6 +13,8 @@ public enum GamePhase {
     /** Faza ustalania wyniku: reczne oznaczanie martwych grup (TOGGLE_DEAD) i akceptacja wyniku. */
     SCORING,
 
+    REPLAY,
+
     /** Koniec gry: wyswietlenie wyniku i blokada dalszych akcji. */
     FINISHED
 }

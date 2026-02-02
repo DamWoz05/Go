@@ -14,6 +14,8 @@ import pt.training.go.client.gui.model.ClientUiState;
 import pt.training.go.client.gui.net.ClientConnection;
 import pt.training.go.client.gui.net.ServerLineListener;
 import pt.training.go.client.gui.parser.ServerMessageParser;
+import javafx.stage.Modality;
+import javafx.beans.binding.Bindings;
 
 //TODO tworzenie serwera za pomoca connectwindow
 /**
@@ -115,11 +117,14 @@ public final class ConnectWindow {
             controller.attachConnection(conn);
 
             Platform.runLater(() -> {
-                connectStage.close();
+                if (port == 1989) {
+                    showReplayLoadDialog(connectStage, conn, controller);
+                    return;
+                }
 
+                connectStage.close();
                 Stage gameStage = new Stage();
                 GameWindow.show(gameStage, conn, controller);
-
                 gameStage.setOnCloseRequest(ev -> conn.close());
             });
 
@@ -142,5 +147,64 @@ public final class ConnectWindow {
         PauseTransition pt = new PauseTransition(Duration.millis(180));
         pt.setOnFinished(e -> btn.setStyle(old));
         pt.play();
+    }
+
+    private static void showReplayLoadDialog(Stage connectStage, ClientConnection conn, GameController controller) {
+        Stage dialog = new Stage();
+        dialog.initOwner(connectStage);
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.setTitle("Replay – wybierz grę");
+
+        Label label = new Label("Podaj ID gry do obejrzenia:");
+        TextField idField = new TextField();
+        idField.setPromptText("np. 1");
+
+        Button watchBtn = new Button("Obejrzyj");
+        Button cancelBtn = new Button("Anuluj");
+
+        watchBtn.disableProperty().bind(
+                Bindings.createBooleanBinding(
+                        () -> idField.getText() == null || idField.getText().trim().isEmpty(),
+                        idField.textProperty()
+                )
+        );
+
+        watchBtn.setOnAction(e -> {
+            long id;
+            try {
+                id = Long.parseLong(idField.getText().trim());
+                if (id < 0) throw new NumberFormatException("negative");
+            } catch (NumberFormatException ex) {
+                Alert a = new Alert(Alert.AlertType.ERROR);
+                a.setTitle("Replay");
+                a.setHeaderText("Niepoprawne ID");
+                a.setContentText("Podaj dodatnią liczbę całkowitą (np. 1).");
+                a.showAndWait();
+                return;
+            }
+
+            conn.sendLine("LOAD " + id);
+
+            dialog.close();
+            connectStage.close();
+
+            Stage gameStage = new Stage();
+            GameWindow.show(gameStage, conn, controller);
+            gameStage.setOnCloseRequest(ev2 -> conn.close());
+        });
+
+        cancelBtn.setOnAction(e -> {
+            conn.close();
+            dialog.close();
+        });
+
+        HBox buttons = new HBox(10, watchBtn, cancelBtn);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(10, label, idField, buttons);
+        root.setPadding(new Insets(12));
+
+        dialog.setScene(new Scene(root, 320, 140));
+        dialog.show();
     }
 }

@@ -57,6 +57,13 @@ public final class GameController implements ClientEventListener {
      */
     @Override
     public void onWelcome(String colorName) {
+        if ("REPLAY".equalsIgnoreCase(colorName)) {
+            state.setMyColor(null);
+            state.setPhase(GamePhase.REPLAY);
+            state.setMyTurn(false);
+            state.logs().add("Tryb Replay: Wstecz/Dalej (PREV/NEXT)");
+            return;
+        }
         try {
             StoneColor c = StoneColor.valueOf(colorName);
             state.setMyColor(c);
@@ -263,6 +270,16 @@ public final class GameController implements ClientEventListener {
         if (!canSend()) return;
         connection.sendLine("REQUEST_RESUME");
         state.setPhase(GamePhase.PLAYING);
+    }
+
+    public void sendReplayNext() {
+        if (state.getPhase() != GamePhase.REPLAY) return;
+        connection.sendLine("NEXT");
+    }
+
+    public void sendReplayPrev() {
+        if (state.getPhase() != GamePhase.REPLAY) return;
+        connection.sendLine("PREV");
     }
 
     /**

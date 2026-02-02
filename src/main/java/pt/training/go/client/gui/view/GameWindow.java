@@ -16,6 +16,9 @@ import pt.training.go.client.gui.net.ClientConnection;
 import javafx.animation.PauseTransition;
 import javafx.util.Duration;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 /**
  * Glowne okno gry.
  *
@@ -171,23 +174,40 @@ public final class GameWindow {
         Button btnPass = new Button("PASS");
         Button btnResign = new Button("RESIGN");
 
-        btnPass.setStyle("-fx-background-color: orange; -fx-font-size: 18px; -fx-font-weight: bold;");
-        btnResign.setStyle("-fx-background-color: red; -fx-font-size: 18px; -fx-font-weight: bold;");
+        interface ActionStrategy {
+            String leftText();
+            String rightText();
+            void onLeft();
+            void onRight();
+        }
 
-        btnPass.setMaxWidth(Double.MAX_VALUE);
-        btnResign.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnPass, Priority.ALWAYS);
-        HBox.setHgrow(btnResign, Priority.ALWAYS);
+        Map<GamePhase, ActionStrategy> strategies = new EnumMap<>(GamePhase.class);
 
-        btnPass.setOnAction(e -> {
-            if (state.getPhase() == GamePhase.FINISHED) return;
+        strategies.put(GamePhase.PLAYING, new ActionStrategy() {
+            public String leftText() { return "PASS"; }
+            public String rightText() { return "RESIGN"; }
+            public void onLeft() { controller.sendPass(); }
+            public void onRight() {
+                Alert a = new Alert(Alert.AlertType.CONFIRMATION);
+                a.setTitle("RESIGN");
+                a.setHeaderText("Na pewno chcesz poddac gre?");
+                a.setContentText("Tej akcji nie da sie cofnac.");
 
-            if (state.getPhase() == GamePhase.PLAYING) {
-                controller.sendPass();
-                return;
+                ButtonType yes = new ButtonType("Tak", ButtonBar.ButtonData.YES);
+                ButtonType no = new ButtonType("Nie", ButtonBar.ButtonData.NO);
+                a.getButtonTypes().setAll(yes, no);
+
+                a.showAndWait().ifPresent(bt -> {
+                    if (bt == yes) controller.sendResign();
+                });
             }
 
-            if (state.getPhase() == GamePhase.SCORING) {
+        });
+
+        strategies.put(GamePhase.SCORING, new ActionStrategy() {
+            public String leftText() { return "PASS"; }
+            public String rightText() { return "RESIGN"; }
+            public void onLeft() {
                 Alert a = new Alert(Alert.AlertType.CONFIRMATION);
                 a.setTitle("Scoring");
                 a.setHeaderText("Faza ustalania wynikow");
@@ -203,30 +223,42 @@ public final class GameWindow {
                     else if (bt == resume) controller.sendRequestResume();
                 });
             }
+            public void onRight() { controller.sendResign(); }
         });
 
-        btnResign.setOnAction(e -> {
-            if (state.getPhase() == GamePhase.FINISHED) return;
-
-            Alert a = new Alert(Alert.AlertType.CONFIRMATION);
-            a.setTitle("RESIGN");
-            a.setHeaderText("Na pewno chcesz poddac gre?");
-            a.setContentText("Tej akcji nie da sie cofnac.");
-
-            ButtonType yes = new ButtonType("Tak", ButtonBar.ButtonData.YES);
-            ButtonType no = new ButtonType("Nie", ButtonBar.ButtonData.NO);
-            a.getButtonTypes().setAll(yes, no);
-
-            a.showAndWait().ifPresent(bt -> {
-                if (bt == yes) controller.sendResign();
-            });
+        strategies.put(GamePhase.REPLAY, new ActionStrategy() {
+            public String leftText() { return "Wstecz"; }
+            public String rightText() { return "Dalej"; }
+            public void onLeft() { controller.sendReplayPrev(); }
+            public void onRight() { controller.sendReplayNext(); }
         });
+
+        Runnable refreshButtons = () -> {
+            ActionStrategy s = strategies.getOrDefault(state.getPhase(), strategies.get(GamePhase.PLAYING));
+            btnPass.setText(s.leftText());
+            btnResign.setText(s.rightText());
+        };
+
+        state.phaseProperty().addListener((obs, ov, nv) -> refreshButtons.run());
+        refreshButtons.run();
+
+        btnPass.setOnAction(e -> strategies.getOrDefault(state.getPhase(), strategies.get(GamePhase.PLAYING)).onLeft());
+        btnResign.setOnAction(e -> strategies.getOrDefault(state.getPhase(), strategies.get(GamePhase.PLAYING)).onRight());
+
+        btnPass.setStyle("-fx-background-color: orange; -fx-font-size: 18px; -fx-font-weight: bold;");
+        btnResign.setStyle("-fx-background-color: red; -fx-font-size: 18px; -fx-font-weight: bold;");
+
+        btnPass.setMaxWidth(Double.MAX_VALUE);
+        btnResign.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(btnPass, Priority.ALWAYS);
+        HBox.setHgrow(btnResign, Priority.ALWAYS);
 
         btnPass.disableProperty().bind(
                 Bindings.createBooleanBinding(
                         () -> {
                             if (state.getPhase() == GamePhase.FINISHED) return true;
                             if (state.getPhase() == GamePhase.SCORING) return false;
+                            if (state.getPhase() == GamePhase.REPLAY) return false;
                             return !state.isMyTurn();
                         },
                         state.phaseProperty(),

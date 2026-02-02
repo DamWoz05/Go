@@ -4,6 +4,9 @@ import java.util.LinkedList;
 import java.util.Queue;
 
 // TODO (FUTURE Patterns): Observer
+// TODO dokonczyc dokumentacje gui dla replay
+// TODO poprawic wyswietlanie listy ruchow w gui
+// TODO naprawic blad gdzie polaczenie przez replay psuje odpalanie gry
 
 /**
  * Board reprezentuje planszę gry w Go.
