@@ -1,222 +1,223 @@
 package pt.training.go.client;
 
+import pt.training.go.server.Board;
+import pt.training.go.server.StoneColor;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
 
 public class SmartBot {
 
-    private static final String SERVER_ADDRESS = "localhost";
-    private static final int PORT = 1988;
-    private static final int SIZE = 19;
+    private BufferedReader in;
+    private PrintWriter out;
+    private Board board;
+    private StoneColor myColor;
+    private volatile boolean playing = true;
+    private Random random = new Random();
+    
+    // Zapamiętujemy odrzucone ruchy (w formacie jaki wysyłamy serwerowi, czyli "R C")
+    private Set<String> badMoves = new HashSet<>();
+    private String lastMoveCoords = null; 
 
-    private static final char SYMBOL_BLACK = '\u25CB';
-    private static final char SYMBOL_WHITE = '\u25CF';
+    private static final char EMPTY = '+';
 
-    private char myColorChar;
-    private char oppColorChar;
-    private String lastMove = "";
+    public void play(String serverAddress) throws IOException {
+        System.out.println("[BOT] Łączę się do " + serverAddress + ":1988");
+        
+        try (Socket socket = new Socket(serverAddress, 1988)) {
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
 
-    public static void main(String[] args) {
-        new SmartBot().start();
-    }
-
-    public void start() {
-        try (Socket socket = new Socket(SERVER_ADDRESS, PORT);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
-
-            char[][] board = new char[SIZE][SIZE];
-            String line;
-
-            while ((line = in.readLine()) != null) {
-
-                if (line.startsWith("WELCOME")) {
-                    String[] parts = line.split(" ");
-                    String color = parts.length > 1 ? parts[1] : "";
-                    if (color.equals("CZARNY") || color.equals("BLACK")) {
-                        myColorChar = SYMBOL_BLACK;
-                        oppColorChar = SYMBOL_WHITE;
-                    } else {
-                        myColorChar = SYMBOL_WHITE;
-                        oppColorChar = SYMBOL_BLACK;
+            Thread listener = new Thread(() -> {
+                try {
+                    while (playing) {
+                        String line = in.readLine();
+                        if (line == null) {
+                            playing = false;
+                            break;
+                        }
+                        handleMessage(line);
                     }
+                } catch (IOException e) {
+                    if (playing) e.printStackTrace();
                 }
+            });
+            listener.start();
 
-                else if (line.startsWith("BOARD")) {
-                    parseBoard(line.substring(6), board);
-                }
-
-                else if (line.startsWith("YOUR_MOVE")) {
-                    String move = calculateMove(board);
-                    if (move.equals(lastMove)) {
-                        move = makeRandomMove(board);
-                    }
-                    out.println(move);
-                    lastMove = move;
-                }
-
-                else if (line.startsWith("MESSAGE [GAME OVER]")) {
-                    break;
-                }
+            while (playing) {
+                Thread.sleep(100);
             }
-
-        } catch (IOException e) {
+            
+            listener.join(1000);
+            
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
 
-    private String calculateMove(char[][] board) {
-
-        String defense = findCriticalMove(board, myColorChar);
-        if (defense != null) return defense;
-
-        String attack = findCriticalMove(board, oppColorChar);
-        if (attack != null) return attack;
-
-        return makeRandomMove(board);
+    private void handleMessage(String line) {
+        System.out.println("[BOT] <- " + line);
+        
+        if (line.startsWith("WELCOME")) {
+            myColor = StoneColor.valueOf(line.substring(8).trim());
+            System.out.println("[BOT] Mój kolor: " + myColor);
+            
+        } else if (line.startsWith("BOARD_SIZE")) {
+            int size = Integer.parseInt(line.substring(11).trim());
+            board = new Board(size);
+            
+        } else if (line.startsWith("BOARD ")) {
+            badMoves.clear(); // Nowa tura = czysta lista błędów
+            String flat = line.substring(6);
+            board.updateFromFlatString(flat);
+            
+        } else if (line.startsWith("MESSAGE")) {
+            String msgLower = line.toLowerCase();
+            // Jeśli serwer odrzucił ruch (zajęte, błąd, zły zakres)
+            if (msgLower.contains("zajete") || msgLower.contains("niedozwolony") || 
+                msgLower.contains("invalid") || msgLower.contains("illegal") || 
+                msgLower.contains("bledne")) {
+                
+                if (lastMoveCoords != null) {
+                    System.out.println("[BOT] Ruch " + lastMoveCoords + " odrzucony. Ignoruję go.");
+                    badMoves.add(lastMoveCoords);
+                }
+            }
+            
+        } else if (line.startsWith("YOUR_MOVE")) {
+            makeMove();
+            
+        } else if (line.startsWith("OTHER_PLAYER_LEFT")) {
+            playing = false;
+        }
     }
 
-    private String findCriticalMove(char[][] board, char targetColor) {
+    private void makeMove() {
+        if (board == null || myColor == null) {
+            sendPass();
+            return;
+        }
 
-        Set<String> visited = new HashSet<>();
+        int size = board.getSize();
+        char myStone = myColor.asChar();
 
-        for (int r = 0; r < SIZE; r++) {
-            for (int c = 0; c < SIZE; c++) {
-
-                String key = r + "," + c;
-                if (board[r][c] == targetColor && !visited.contains(key)) {
-
-                    Set<String> group = new HashSet<>();
-                    Set<String> liberties = new HashSet<>();
-                    getGroupAndLiberties(board, r, c, targetColor, group, liberties);
-                    visited.addAll(group);
-
+        // 1. OBRONA (szukanie kamieni z 1 oddechem)
+        for (int r = 0; r < size; r++) {
+            for (int c = 0; c < size; c++) {
+                if (getStone(r, c) == myStone) {
+                    List<int[]> liberties = findLiberties(r, c);
+                    
                     if (liberties.size() == 1) {
-                        String lib = liberties.iterator().next();
-                        String[] p = lib.split(",");
-                        int lr = Integer.parseInt(p[0]);
-                        int lc = Integer.parseInt(p[1]);
-
-                        if (isValidMove(board, lr, lc)) {
-                            return "MOVE " + lr + " " + lc;
+                        int[] lib = liberties.get(0);
+                        // Konwertujemy na format serwera ("R C" gdzie R,C to 1..19)
+                        String candidateMoveStr = (lib[0] + 1) + " " + (lib[1] + 1);
+                        
+                        if (!badMoves.contains(candidateMoveStr)) {
+                            System.out.println("[BOT] OBRONA! Ratuję grupę ruchem: " + candidateMoveStr);
+                            sendMove(lib[0], lib[1]);
+                            return;
                         }
                     }
                 }
             }
         }
-        return null;
-    }
 
-    private boolean isValidMove(char[][] board, int r, int c) {
-
-        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return false;
-        if (board[r][c] == myColorChar || board[r][c] == oppColorChar) return false;
-
-        char[][] copy = copyBoard(board);
-        copy[r][c] = myColorChar;
-
-        boolean captures = capturesOpponent(copy, r, c);
-
-        Set<String> group = new HashSet<>();
-        Set<String> liberties = new HashSet<>();
-        getGroupAndLiberties(copy, r, c, myColorChar, group, liberties);
-
-        return !liberties.isEmpty() || captures;
-    }
-
-    private boolean capturesOpponent(char[][] board, int r, int c) {
-
-        int[][] dirs = {{0,1},{0,-1},{1,0},{-1,0}};
-
-        for (int[] d : dirs) {
-            int nr = r + d[0];
-            int nc = c + d[1];
-
-            if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) continue;
-
-            if (board[nr][nc] == oppColorChar) {
-                Set<String> g = new HashSet<>();
-                Set<String> l = new HashSet<>();
-                getGroupAndLiberties(board, nr, nc, oppColorChar, g, l);
-                if (l.isEmpty()) return true;
-            }
-        }
-        return false;
-    }
-
-    private void getGroupAndLiberties(
-            char[][] board, int r, int c, char color,
-            Set<String> group, Set<String> liberties) {
-
-        Queue<int[]> q = new ArrayDeque<>();
-        q.add(new int[]{r, c});
-        group.add(r + "," + c);
-
-        int[][] dirs = {{0,1},{0,-1},{1,0},{-1,0}};
-
-        while (!q.isEmpty()) {
-            int[] cur = q.poll();
-
-            for (int[] d : dirs) {
-                int nr = cur[0] + d[0];
-                int nc = cur[1] + d[1];
-
-                if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) continue;
-
-                String key = nr + "," + nc;
-                char cell = board[nr][nc];
-
-                if (cell == color && !group.contains(key)) {
-                    group.add(key);
-                    q.add(new int[]{nr, nc});
-                }
-                else if (cell != myColorChar && cell != oppColorChar) {
-                    liberties.add(key);
-                }
-            }
-        }
-    }
-
-    private String makeRandomMove(char[][] board) {
-
-        List<int[]> moves = new ArrayList<>();
-
-        for (int r = 0; r < SIZE; r++) {
-            for (int c = 0; c < SIZE; c++) {
-                if (isValidMove(board, r, c)) {
-                    moves.add(new int[]{r, c});
+        // 2. RUCH LOSOWY
+        List<int[]> emptySpots = new ArrayList<>();
+        for (int r = 0; r < size; r++) {
+            for (int c = 0; c < size; c++) {
+                if (getStone(r, c) == EMPTY) {
+                    String moveStr = (r + 1) + " " + (c + 1);
+                    if (!badMoves.contains(moveStr)) {
+                        emptySpots.add(new int[]{r, c});
+                    }
                 }
             }
         }
 
-        if (moves.isEmpty()) return "PASS";
-
-        Collections.shuffle(moves);
-        int[] m = moves.get(0);
-        return "MOVE " + m[0] + " " + m[1];
-    }
-
-    private char[][] copyBoard(char[][] board) {
-        char[][] copy = new char[SIZE][SIZE];
-        for (int i = 0; i < SIZE; i++) {
-            System.arraycopy(board[i], 0, copy[i], 0, SIZE);
+        if (!emptySpots.isEmpty()) {
+            int[] move = emptySpots.get(random.nextInt(emptySpots.size()));
+            System.out.println("[BOT] Losowy ruch: " + (move[0]+1) + " " + (move[1]+1));
+            sendMove(move[0], move[1]);
+        } else {
+            sendPass();
         }
-        return copy;
     }
 
-    private void parseBoard(String flat, char[][] board) {
-        flat = flat.trim();
-        for (int i = 0; i < flat.length() && i < SIZE * SIZE; i++) {
-            int r = i / SIZE;
-            int c = i % SIZE;
-            char sym = flat.charAt(i);
-            if (sym == 'B') sym = SYMBOL_BLACK;
-            if (sym == 'W') sym = SYMBOL_WHITE;
-            board[r][c] = sym;
+    /**
+     * Wysyła ruch konwertując współrzędne 0-18 na 1-19.
+     */
+    private void sendMove(int r, int c) {
+        int serverR = r + 1;
+        int serverC = c + 1;
+        
+        String coords = serverR + " " + serverC;
+        lastMoveCoords = coords; // Zapamiętujemy "5 5", a nie "4 4"
+        
+        out.println("MOVE " + coords);
+    }
+    
+    private void sendPass() {
+        lastMoveCoords = null;
+        out.println("PASS");
+    }
+
+    private List<int[]> findLiberties(int startR, int startC) {
+        int size = board.getSize();
+        char color = getStone(startR, startC);
+        boolean[][] visited = new boolean[size][size];
+        List<int[]> liberties = new ArrayList<>();
+        searchGroup(startR, startC, color, visited, liberties);
+        return liberties;
+    }
+
+    private void searchGroup(int r, int c, char color, boolean[][] visited, List<int[]> liberties) {
+        int size = board.getSize();
+        if (r < 0 || r >= size || c < 0 || c >= size) return;
+        if (visited[r][c]) return;
+        
+        visited[r][c] = true;
+        char current = getStone(r, c);
+        
+        if (current == EMPTY) {
+            boolean exists = false;
+            for(int[] l : liberties) if(l[0]==r && l[1]==c) exists=true;
+            if(!exists) liberties.add(new int[]{r, c});
+            return;
+        }
+        
+        if (current != color) return;
+        
+        searchGroup(r - 1, c, color, visited, liberties);
+        searchGroup(r + 1, c, color, visited, liberties);
+        searchGroup(r, c - 1, color, visited, liberties);
+        searchGroup(r, c + 1, color, visited, liberties);
+    }
+
+    private char getStone(int r, int c) {
+        int size = board.getSize();
+        if (r < 0 || r >= size || c < 0 || c >= size) return 0;
+        String flat = board.toFlatString();
+        int index = r * size + c;
+        if (index >= 0 && index < flat.length()) return flat.charAt(index);
+        return EMPTY;
+    }
+
+    public static void main(String[] args) {
+        String serverAddress = args.length > 0 ? args[0] : "localhost";
+        SmartBot bot = new SmartBot();
+        try {
+            bot.play(serverAddress);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }

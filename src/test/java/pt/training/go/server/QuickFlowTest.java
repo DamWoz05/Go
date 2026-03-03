@@ -1,14 +1,22 @@
 package pt.training.go.server;
 
-import org.junit.jupiter.api.Test;
-import pt.training.go.server.command.GameContext;
-import pt.training.go.server.command.PlayerContext;
-import pt.training.go.server.state.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+
+import pt.training.go.server.command.GameContext;
+import pt.training.go.server.command.PlayerContext;
+import pt.training.go.server.state.FinishedState;
+import pt.training.go.server.state.GameState;
+import pt.training.go.server.state.PlayingState;
+import pt.training.go.server.state.ScoringState;
 
 public class QuickFlowTest {
 
